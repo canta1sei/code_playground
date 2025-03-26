@@ -1,0 +1,42 @@
+{
+    "id": "your-production-environment-id",
+    "name": "S3 API Production Environment",
+    "values": [{
+            "key": "baseUrl",
+            "value": "https://your-production-api.com",
+            "type": "default",
+            "enabled": true
+        },
+        {
+            "key": "bucketName",
+            "value": "your-production-bucket",
+            "type": "default",
+            "enabled": true
+        },
+        {
+            "key": "fileKey",
+            "value": "your-file-key",
+            "type": "default",
+            "enabled": true
+        },
+        {
+            "key": "awsAccessKeyId",
+            "value": "your-production-access-key",
+            "type": "secret",
+            "enabled": true
+        },
+        {
+            "key": "awsSecretKey",
+            "value": "your-production-secret-key",
+            "type": "secret",
+            "enabled": true
+        },
+        {
+            "key": "awsRegion",
+            "value": "ap-northeast-1",
+            "type": "default",
+            "enabled": true
+        }
+    ],
+    "_postman_variable_scope": "environment"
+}

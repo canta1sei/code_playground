@@ -1,0 +1,42 @@
+{
+    "id": "your-environment-id",
+    "name": "S3 API Environment",
+    "values": [{
+            "key": "baseUrl",
+            "value": "http://localhost:8080",
+            "type": "default",
+            "enabled": true
+        },
+        {
+            "key": "bucketName",
+            "value": "test-bucket-local",
+            "type": "default",
+            "enabled": true
+        },
+        {
+            "key": "fileKey",
+            "value": "test-file.txt",
+            "type": "default",
+            "enabled": true
+        },
+        {
+            "key": "awsAccessKeyId",
+            "value": "{{AWS_ACCESS_KEY_ID}}",
+            "type": "default",
+            "enabled": true
+        },
+        {
+            "key": "awsSecretKey",
+            "value": "{{AWS_SECRET_KEY}}",
+            "type": "default",
+            "enabled": true
+        },
+        {
+            "key": "awsRegion",
+            "value": "ap-northeast-1",
+            "type": "default",
+            "enabled": true
+        }
+    ],
+    "_postman_variable_scope": "environment"
+}
