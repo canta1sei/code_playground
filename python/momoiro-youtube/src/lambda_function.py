@@ -86,11 +86,18 @@ def analyze_video_data(video_data: Dict[str, Any]) -> Dict[str, Any]:
     video_data['analysis'] = analysis
     return video_data
 
-def get_channel_videos(channel_id: str, published_after: datetime) -> List[Dict[str, Any]]:
-    """指定したチャンネルの動画情報を取得"""
+def get_channel_videos_for_year(channel_id: str, year: int) -> List[Dict[str, Any]]:
+    """指定した年のチャンネルの動画情報を取得"""
     try:
+        # 東京タイムゾーン
+        tz = pytz.timezone('Asia/Tokyo')
+        # 年の開始と終了時刻を設定
+        start_date = datetime(year, 1, 1, tzinfo=tz)
+        end_date = datetime(year + 1, 1, 1, tzinfo=tz)
+        
         # UTC時刻に変換
-        published_after_utc = published_after.astimezone(pytz.UTC)
+        start_date_utc = start_date.astimezone(pytz.UTC)
+        end_date_utc = end_date.astimezone(pytz.UTC)
         
         videos = []
         page_token = None
@@ -102,7 +109,8 @@ def get_channel_videos(channel_id: str, published_after: datetime) -> List[Dict[
                 'channelId': channel_id,
                 'part': 'id,snippet',
                 'order': 'date',
-                'publishedAfter': format_rfc3339(published_after_utc),
+                'publishedAfter': format_rfc3339(start_date_utc),
+                'publishedBefore': format_rfc3339(end_date_utc),
                 'type': 'video',
                 'maxResults': 50
             }
@@ -144,7 +152,7 @@ def get_channel_videos(channel_id: str, published_after: datetime) -> List[Dict[
             if not page_token:
                 break
 
-        print(f"Total videos fetched: {total_videos}")
+        print(f"Total videos fetched for {year}: {total_videos}")
         return videos
 
     except HttpError as e:
@@ -157,61 +165,63 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         tz = pytz.timezone('Asia/Tokyo')
         # 実行時の現在時刻
         current_time = datetime.now(tz)
-        # チャンネル開設日（2011年）から全ての動画を取得
-        start_date = datetime(2011, 1, 1, tzinfo=tz)
-
-        print(f"Searching for all videos since: {start_date.isoformat()}")
-
-        # チャンネルの動画を取得
-        videos = get_channel_videos(CHANNEL_ID, start_date)
-
-        if videos:
-            # 取得時刻をUTCで取得
-            fetched_at = datetime.now(pytz.UTC)
-            # S3に保存するファイル名の生成（取得時刻を使用）
-            date_str = fetched_at.strftime('%Y/%m/%d/%H')
-            file_name = f"youtube_videos/{date_str}/videos_{fetched_at.strftime('%M')}.json"
+        
+        # 取得対象の年を設定（2008年から現在まで）
+        start_year = 2008
+        end_year = current_time.year
+        
+        all_videos = []
+        for year in range(start_year, end_year + 1):
+            print(f"\nFetching videos for year {year}")
+            videos = get_channel_videos_for_year(CHANNEL_ID, year)
             
-            # 基本的な統計情報を計算
-            total_views = sum(int(v['statistics'].get('viewCount', 0)) for v in videos)
-            total_likes = sum(int(v['statistics'].get('likeCount', 0)) for v in videos)
-            total_comments = sum(int(v['statistics'].get('commentCount', 0)) for v in videos)
-            
-            # メタデータを追加
-            metadata = {
-                'total_videos': len(videos),
-                'total_views': total_views,
-                'total_likes': total_likes,
-                'total_comments': total_comments,
-                'average_views': total_views / len(videos) if videos else 0,
-                'average_likes': total_likes / len(videos) if videos else 0,
-                'average_comments': total_comments / len(videos) if videos else 0,
-                'fetched_at': fetched_at.isoformat()
-            }
-            
-            # JSONデータをS3にアップロード
-            data = {
-                'metadata': metadata,
-                'videos': videos
-            }
-            
-            s3.put_object(
-                Bucket=BUCKET_NAME,
-                Key=file_name,
-                Body=json.dumps(data, ensure_ascii=False, indent=2),
-                ContentType='application/json'
-            )
+            if videos:
+                # 取得時刻をUTCで取得
+                fetched_at = datetime.now(pytz.UTC)
+                
+                # 基本的な統計情報を計算
+                total_views = sum(int(v['statistics'].get('viewCount', 0)) for v in videos)
+                total_likes = sum(int(v['statistics'].get('likeCount', 0)) for v in videos)
+                total_comments = sum(int(v['statistics'].get('commentCount', 0)) for v in videos)
+                
+                # メタデータを追加
+                metadata = {
+                    'year': year,
+                    'total_videos': len(videos),
+                    'total_views': total_views,
+                    'total_likes': total_likes,
+                    'total_comments': total_comments,
+                    'average_views': total_views / len(videos) if videos else 0,
+                    'average_likes': total_likes / len(videos) if videos else 0,
+                    'average_comments': total_comments / len(videos) if videos else 0,
+                    'fetched_at': fetched_at.isoformat()
+                }
+                
+                # S3に保存するファイル名の生成（年単位）
+                file_name = f"youtube_videos/{year}/videos_{year}_{len(videos)}.json"
+                
+                # JSONデータをS3にアップロード
+                data = {
+                    'metadata': metadata,
+                    'videos': videos
+                }
+                
+                s3.put_object(
+                    Bucket=BUCKET_NAME,
+                    Key=file_name,
+                    Body=json.dumps(data, ensure_ascii=False, indent=2),
+                    ContentType='application/json'
+                )
+                
+                all_videos.extend(videos)
 
         return {
             'statusCode': 200,
             'body': json.dumps({
                 'message': 'Successfully fetched and saved videos',
-                'video_count': len(videos),
+                'video_count': len(all_videos),
                 'channel': 'ももいろクローバーZ Official Channel',
-                'time_range': {
-                    'start': start_date.isoformat(),
-                    'end': current_time.isoformat()
-                }
+                'years_processed': list(range(start_year, end_year + 1))
             }, ensure_ascii=False)
         }
 
