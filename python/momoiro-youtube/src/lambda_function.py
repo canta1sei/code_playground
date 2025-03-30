@@ -94,6 +94,7 @@ def get_channel_videos(channel_id: str, published_after: datetime) -> List[Dict[
         
         videos = []
         page_token = None
+        total_videos = 0
         
         while True:
             # 検索リクエストを実行
@@ -135,12 +136,15 @@ def get_channel_videos(channel_id: str, published_after: datetime) -> List[Dict[
                         # 分析データを追加
                         video_data = analyze_video_data(video_data)
                         videos.append(video_data)
+                        total_videos += 1
+                        print(f"Processed video {total_videos}: {video_data['title']}")
 
             # 次のページがあれば続行
             page_token = search_response.get('nextPageToken')
             if not page_token:
                 break
 
+        print(f"Total videos fetched: {total_videos}")
         return videos
 
     except HttpError as e:
@@ -162,9 +166,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         videos = get_channel_videos(CHANNEL_ID, start_date)
 
         if videos:
-            # S3に保存するファイル名の生成（実行時の日付を使用）
-            date_str = current_time.strftime('%Y/%m/%d/%H')
-            file_name = f"youtube_videos/{date_str}/videos_{current_time.strftime('%M')}.json"
+            # 取得時刻をUTCで取得
+            fetched_at = datetime.now(pytz.UTC)
+            # S3に保存するファイル名の生成（取得時刻を使用）
+            date_str = fetched_at.strftime('%Y/%m/%d/%H')
+            file_name = f"youtube_videos/{date_str}/videos_{fetched_at.strftime('%M')}.json"
             
             # 基本的な統計情報を計算
             total_views = sum(int(v['statistics'].get('viewCount', 0)) for v in videos)
@@ -180,7 +186,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'average_views': total_views / len(videos) if videos else 0,
                 'average_likes': total_likes / len(videos) if videos else 0,
                 'average_comments': total_comments / len(videos) if videos else 0,
-                'fetched_at': current_time.isoformat()
+                'fetched_at': fetched_at.isoformat()
             }
             
             # JSONデータをS3にアップロード
