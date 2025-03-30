@@ -34,7 +34,7 @@ def get_channel_id(channel_name: str) -> str:
 
 # ももクロの公式チャンネルID
 CHANNEL_IDS = [
-    '@MCZofficial',  # ももいろクローバーZ
+    'UC6YNWTm6zuMFsjqd0PO3G-Q',  # ももいろクローバーZ
     'UCQhK0M0B5QX0jc2xmfC_syw',  # ももクロちゃんZ
     'UCf5t4M5HJBvnwpqoe8R8GIg'   # STARDUST CHANNEL
 ]
