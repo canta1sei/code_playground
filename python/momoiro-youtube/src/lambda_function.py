@@ -24,7 +24,9 @@ CHANNEL_IDS = [
 
 def format_rfc3339(dt: datetime) -> str:
     """datetime オブジェクトをRFC3339形式の文字列に変換"""
-    return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+    # UTCに変換してからフォーマット
+    utc_dt = dt.astimezone(pytz.UTC)
+    return utc_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
 
 def get_channel_videos(channel_id: str, published_after: datetime) -> List[Dict[str, Any]]:
     """指定したチャンネルの動画情報を取得"""
@@ -78,7 +80,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # 東京タイムゾーン
         tz = pytz.timezone('Asia/Tokyo')
         current_time = datetime.now(tz)
-        one_day_ago = current_time - timedelta(days=1)  # 1日前までの動画を取得
+        # 過去24時間の動画を取得するため、現在時刻から24時間前を計算
+        one_day_ago = current_time - timedelta(days=7)  # 1週間前までの動画を取得するように変更
 
         # 全チャンネルの動画を取得
         all_videos = []
@@ -108,7 +111,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'start': one_day_ago.isoformat(),
                     'end': current_time.isoformat()
                 }
-            })
+            }, ensure_ascii=False)
         }
 
     except Exception as e:
