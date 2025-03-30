@@ -1,0 +1,44 @@
+{
+    "TableName": "MomoiroTweets",
+    "KeySchema": [{
+            "AttributeName": "tweet_id",
+            "KeyType": "HASH"
+        },
+        {
+            "AttributeName": "created_at",
+            "KeyType": "RANGE"
+        }
+    ],
+    "AttributeDefinitions": [{
+            "AttributeName": "tweet_id",
+            "AttributeType": "S"
+        },
+        {
+            "AttributeName": "created_at",
+            "AttributeType": "S"
+        }
+    ],
+    "ProvisionedThroughput": {
+        "ReadCapacityUnits": 5,
+        "WriteCapacityUnits": 5
+    },
+    "GlobalSecondaryIndexes": [{
+        "IndexName": "UsernameCreatedAtIndex",
+        "KeySchema": [{
+                "AttributeName": "username",
+                "KeyType": "HASH"
+            },
+            {
+                "AttributeName": "created_at",
+                "KeyType": "RANGE"
+            }
+        ],
+        "Projection": {
+            "ProjectionType": "ALL"
+        },
+        "ProvisionedThroughput": {
+            "ReadCapacityUnits": 5,
+            "WriteCapacityUnits": 5
+        }
+    }]
+}
