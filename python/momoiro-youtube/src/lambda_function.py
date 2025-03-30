@@ -105,9 +105,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         # 東京タイムゾーン
         tz = pytz.timezone('Asia/Tokyo')
-        current_time = datetime.now(tz)
+        # 現在時刻を2024年に固定
+        current_time = datetime(2024, 3, 30, 16, 0, 0, tzinfo=tz)
         # 過去30日間の動画を取得
         thirty_days_ago = current_time - timedelta(days=30)
+
+        print(f"Searching for videos between: {thirty_days_ago.isoformat()} and {current_time.isoformat()}")  # デバッグ用
 
         # 全チャンネルの動画を取得
         all_videos = []
