@@ -22,15 +22,22 @@ CHANNEL_IDS = [
     'UCf5t4M5HJBvnwpqoe8R8GIg'   # STARDUST CHANNEL
 ]
 
+def format_rfc3339(dt: datetime) -> str:
+    """datetime オブジェクトをRFC3339形式の文字列に変換"""
+    return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+
 def get_channel_videos(channel_id: str, published_after: datetime) -> List[Dict[str, Any]]:
     """指定したチャンネルの動画情報を取得"""
     try:
+        # UTC時刻に変換
+        published_after_utc = published_after.astimezone(pytz.UTC)
+        
         # 検索リクエストを実行
         search_response = youtube.search().list(
             channelId=channel_id,
             part='id,snippet',
             order='date',
-            publishedAfter=published_after.isoformat() + 'Z',
+            publishedAfter=format_rfc3339(published_after_utc),
             type='video',
             maxResults=50
         ).execute()
@@ -72,7 +79,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         tz = pytz.timezone('Asia/Tokyo')
         current_time = datetime.now(tz)
         one_day_ago = current_time - timedelta(days=1)  # 1日前までの動画を取得
-        date_str = current_time.strftime('%Y/%m/%d/%H')
 
         # 全チャンネルの動画を取得
         all_videos = []
@@ -82,6 +88,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         if all_videos:
             # S3に保存するファイル名の生成
+            date_str = current_time.strftime('%Y/%m/%d/%H')
             file_name = f"youtube_videos/{date_str}/videos_{current_time.strftime('%M')}.json"
             
             # JSONデータをS3にアップロード
