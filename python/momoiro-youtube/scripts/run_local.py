@@ -10,7 +10,7 @@ sys.path.append(project_root)
 # .envファイルのパスを設定
 env_path = os.path.join(project_root, 'config', '.env')
 print(f"Loading .env from: {env_path}")  # デバッグ用
-load_dotenv(env_path)
+load_dotenv(env_path, override=True)
 
 # 環境変数の値を確認
 print(f"YOUTUBE_API_KEY: {os.getenv('YOUTUBE_API_KEY')}")  # デバッグ用
