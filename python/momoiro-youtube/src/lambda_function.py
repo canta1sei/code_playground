@@ -33,11 +33,7 @@ def get_channel_id(channel_name: str) -> str:
         return None
 
 # ももクロの公式チャンネルID
-CHANNEL_IDS = [
-    'UC6YNWTm6zuMFsjqd0PO3G-Q',  # ももいろクローバーZ
-    'UCQhK0M0B5QX0jc2xmfC_syw',  # ももクロちゃんZ
-    'UCf5t4M5HJBvnwpqoe8R8GIg'   # STARDUST CHANNEL
-]
+CHANNEL_ID = 'UC6YNWTm6zuMFsjqd0PO3G-Q'  # ももいろクローバーZ Official Channel
 
 def format_rfc3339(dt: datetime) -> str:
     """datetime オブジェクトをRFC3339形式の文字列に変換"""
@@ -112,13 +108,10 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         print(f"Searching for videos between: {thirty_days_ago.isoformat()} and {current_time.isoformat()}")
 
-        # 全チャンネルの動画を取得
-        all_videos = []
-        for channel_id in CHANNEL_IDS:
-            videos = get_channel_videos(channel_id, thirty_days_ago)
-            all_videos.extend(videos)
+        # チャンネルの動画を取得
+        videos = get_channel_videos(CHANNEL_ID, thirty_days_ago)
 
-        if all_videos:
+        if videos:
             # S3に保存するファイル名の生成（実行時の日付を使用）
             date_str = current_time.strftime('%Y/%m/%d/%H')
             file_name = f"youtube_videos/{date_str}/videos_{current_time.strftime('%M')}.json"
@@ -127,7 +120,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             s3.put_object(
                 Bucket=BUCKET_NAME,
                 Key=file_name,
-                Body=json.dumps(all_videos, ensure_ascii=False, indent=2),
+                Body=json.dumps(videos, ensure_ascii=False, indent=2),
                 ContentType='application/json'
             )
 
@@ -135,7 +128,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'statusCode': 200,
             'body': json.dumps({
                 'message': 'Successfully fetched and saved videos',
-                'video_count': len(all_videos),
+                'video_count': len(videos),
+                'channel': 'ももいろクローバーZ Official Channel',
                 'time_range': {
                     'start': thirty_days_ago.isoformat(),
                     'end': current_time.isoformat()
