@@ -80,13 +80,13 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # 東京タイムゾーン
         tz = pytz.timezone('Asia/Tokyo')
         current_time = datetime.now(tz)
-        # 過去24時間の動画を取得するため、現在時刻から24時間前を計算
-        one_day_ago = current_time - timedelta(days=7)  # 1週間前までの動画を取得するように変更
+        # 過去30日間の動画を取得
+        thirty_days_ago = current_time - timedelta(days=30)
 
         # 全チャンネルの動画を取得
         all_videos = []
         for channel_id in CHANNEL_IDS:
-            videos = get_channel_videos(channel_id, one_day_ago)
+            videos = get_channel_videos(channel_id, thirty_days_ago)
             all_videos.extend(videos)
 
         if all_videos:
@@ -108,7 +108,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'message': 'Successfully fetched and saved videos',
                 'video_count': len(all_videos),
                 'time_range': {
-                    'start': one_day_ago.isoformat(),
+                    'start': thirty_days_ago.isoformat(),
                     'end': current_time.isoformat()
                 }
             }, ensure_ascii=False)
