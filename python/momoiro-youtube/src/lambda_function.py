@@ -197,8 +197,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'fetched_at': fetched_at.isoformat()
                 }
                 
-                # S3に保存するファイル名の生成（年単位）
-                file_name = f"youtube_videos/{year}/videos_{year}_{len(videos)}.json"
+                # S3に保存するファイル名の生成（直下に配置）
+                file_name = f"youtube_videos/videos_{year}_{len(videos)}.json"
                 
                 # JSONデータをS3にアップロード
                 data = {
