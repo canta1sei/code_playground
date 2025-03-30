@@ -15,9 +15,26 @@ BUCKET_NAME = os.environ['S3_BUCKET_NAME']
 YOUTUBE_API_KEY = os.environ['YOUTUBE_API_KEY']
 youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
 
+def get_channel_id(channel_name: str) -> str:
+    """チャンネル名からチャンネルIDを取得"""
+    try:
+        search_response = youtube.search().list(
+            q=channel_name,
+            part='id,snippet',
+            type='channel',
+            maxResults=1
+        ).execute()
+
+        if search_response.get('items'):
+            return search_response['items'][0]['id']['channelId']
+        return None
+    except HttpError as e:
+        print(f'An HTTP error {e.resp.status} occurred: {e.content}')
+        return None
+
 # ももクロの公式チャンネルID
 CHANNEL_IDS = [
-    'UC7pcEjI2cdH1SKR0VPxVxZw',  # ももいろクローバーZ
+    '@MCZofficial',  # ももいろクローバーZ
     'UCQhK0M0B5QX0jc2xmfC_syw',  # ももクロちゃんZ
     'UCf5t4M5HJBvnwpqoe8R8GIg'   # STARDUST CHANNEL
 ]
@@ -31,6 +48,15 @@ def format_rfc3339(dt: datetime) -> str:
 def get_channel_videos(channel_id: str, published_after: datetime) -> List[Dict[str, Any]]:
     """指定したチャンネルの動画情報を取得"""
     try:
+        # チャンネル名（@username）の場合はチャンネルIDを取得
+        if channel_id.startswith('@'):
+            resolved_channel_id = get_channel_id(channel_id)
+            if not resolved_channel_id:
+                print(f"Could not resolve channel ID for {channel_id}")
+                return []
+            channel_id = resolved_channel_id
+            print(f"Resolved channel ID: {channel_id}")  # デバッグ用
+
         # UTC時刻に変換
         published_after_utc = published_after.astimezone(pytz.UTC)
         
