@@ -105,12 +105,12 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         # 東京タイムゾーン
         tz = pytz.timezone('Asia/Tokyo')
-        # 現在時刻を2024年に固定
-        current_time = datetime(2024, 3, 30, 16, 0, 0, tzinfo=tz)
+        # 実行時の現在時刻
+        current_time = datetime.now(tz)
         # 過去30日間の動画を取得
         thirty_days_ago = current_time - timedelta(days=30)
 
-        print(f"Searching for videos between: {thirty_days_ago.isoformat()} and {current_time.isoformat()}")  # デバッグ用
+        print(f"Searching for videos between: {thirty_days_ago.isoformat()} and {current_time.isoformat()}")
 
         # 全チャンネルの動画を取得
         all_videos = []
@@ -119,7 +119,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             all_videos.extend(videos)
 
         if all_videos:
-            # S3に保存するファイル名の生成
+            # S3に保存するファイル名の生成（実行時の日付を使用）
             date_str = current_time.strftime('%Y/%m/%d/%H')
             file_name = f"youtube_videos/{date_str}/videos_{current_time.strftime('%M')}.json"
             
