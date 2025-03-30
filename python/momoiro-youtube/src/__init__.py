@@ -1,3 +1,0 @@
-"""
-Momoiro YouTube Data Fetcher
-""" 
