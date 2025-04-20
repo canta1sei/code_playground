@@ -6,6 +6,7 @@ from datetime import datetime
 import boto3
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
+import csv
 
 # 環境変数の読み込み
 load_dotenv()
@@ -52,37 +53,67 @@ def get_comments(video_id):
     
     return comments
 
-def save_to_s3(comments, video_id):
-    """コメントをS3に保存"""
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"comments_{video_id}_{timestamp}.json"
+def save_json_to_s3(comments, video_id, timestamp):
+    """コメントをJSON形式でS3に保存"""
+    json_filename = f"comments_{video_id}_{timestamp}.json"
     
-    # コメントをJSON形式に変換
+    # JSON形式で保存
     data = {
         'video_id': video_id,
         'timestamp': timestamp,
         'comments': comments
     }
+
+    try:
+        s3.put_object(
+            Bucket=BUCKET_NAME,
+            Key=f"youtube_comments/{json_filename}",
+            Body=json.dumps(data, ensure_ascii=False, indent=2)
+        )
+        print(f"コメントを {json_filename} としてS3に保存しました")
+    except Exception as e:
+        print(f"JSONのS3への保存中にエラーが発生しました: {e}")
+
+def save_csv_to_s3(comments, video_id, timestamp):
+    """コメントをCSV形式でS3に保存"""
+    csv_filename = f"comments_{video_id}_{timestamp}.csv"
     
     try:
+        # CSVデータの作成
+        csv_buffer = []
+        csv_buffer.append("author,publishedAt,likeCount,text\n")
+        for comment in comments:
+            # テキスト内のカンマと改行をエスケープ
+            text = comment['text'].replace(',', '，').replace('\n', ' ')
+            csv_buffer.append(f"{comment['author']},{comment['publishedAt']},{comment['likeCount']},{text}\n")
+
         # S3にアップロード
         s3.put_object(
             Bucket=BUCKET_NAME,
-            Key=f"youtube_comments/{filename}",
-            Body=json.dumps(data, ensure_ascii=False, indent=2)
+            Key=f"youtube_comments/{csv_filename}",
+            Body=''.join(csv_buffer)
         )
-        print(f"コメントを {filename} としてS3に保存しました")
-        
+        print(f"コメントを {csv_filename} としてS3に保存しました")
     except Exception as e:
-        print(f"S3への保存中にエラーが発生しました: {e}")
+        print(f"CSVのS3への保存中にエラーが発生しました: {e}")
+
+def save_to_s3(comments, video_id):
+    """コメントをS3に保存（JSONとCSV形式）"""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    # JSON形式で保存
+    save_json_to_s3(comments, video_id, timestamp)
+    
+    # CSV形式で保存
+    save_csv_to_s3(comments, video_id, timestamp)
 
 def main(video_id):
     # コマンドライン引数の設定
     print(f"動画ID: {video_id} のコメントを取得中...")
-    
+
     comments = get_comments(video_id)
     print(f"{len(comments)}件のコメントを取得しました")
-    
+
     save_to_s3(comments, video_id)
 
 if __name__ == "__main__":
