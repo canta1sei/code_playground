@@ -194,8 +194,11 @@ def convert_to_csv_row(video_data: Dict[str, Any]) -> Dict[str, Any]:
 def save_to_csv(videos: List[Dict[str, Any]], s3_client: boto3.client, bucket: str) -> None:
     """動画データをCSVとしてS3に保存"""
     if not videos:
+        print("No videos provided to save_to_csv")
         return
         
+    print(f"Preparing to save {len(videos)} videos to CSV")
+    
     # CSVヘッダーの準備
     csv_row = convert_to_csv_row(videos[0])
     fieldnames = list(csv_row.keys())
@@ -207,20 +210,25 @@ def save_to_csv(videos: List[Dict[str, Any]], s3_client: boto3.client, bucket: s
     # ファイルが存在するか確認
     csv_key = 'video_stats.csv'
     try:
+        print("Checking for existing CSV file...")
         existing_content = s3_client.get_object(Bucket=bucket, Key=csv_key)['Body'].read().decode('utf-8')
+        print("Found existing CSV file, appending data...")
         # 既存のデータを保持
         output.write(existing_content.rstrip())
         if not existing_content.endswith('\n'):
             output.write('\n')
     except s3_client.exceptions.NoSuchKey:
+        print("No existing CSV file found, creating new one...")
         # ファイルが存在しない場合はヘッダーを書き込む
         writer.writeheader()
     
     # 新しいデータを追記
+    print("Writing video data to CSV...")
     for video in videos:
         writer.writerow(convert_to_csv_row(video))
     
     # S3にアップロード
+    print("Uploading CSV to S3...")
     s3_client.put_object(
         Bucket=bucket,
         Key=csv_key,
@@ -228,6 +236,7 @@ def save_to_csv(videos: List[Dict[str, Any]], s3_client: boto3.client, bucket: s
         ContentType='text/csv'
     )
     output.close()
+    print("CSV upload completed")
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
@@ -245,6 +254,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             print(f"\nFetching videos for year {year}")
             videos = get_channel_videos_for_year(CHANNEL_ID, year)
             all_videos.extend(videos)
+            print(f"Added {len(videos)} videos for year {year}")
             
             if videos:
                 # 取得時刻をUTCで取得
@@ -282,16 +292,22 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 print(f"Saved JSON data for {year} to S3: {json_key}")
         
+        print(f"\nTotal videos collected: {len(all_videos)}")
+        
         # 全年のデータをCSVとして保存
         if all_videos:
+            print("Attempting to save CSV file...")
             save_to_csv(all_videos, s3, BUCKET_NAME)
-            print("Saved all video data to CSV file")
+            print("CSV file saved successfully")
+        else:
+            print("No videos to save to CSV")
         
         return {
             'statusCode': 200,
             'body': json.dumps({
                 'message': 'Successfully processed video data',
-                'years_processed': list(range(start_year, end_year + 1))
+                'years_processed': list(range(start_year, end_year + 1)),
+                'total_videos': len(all_videos)
             })
         }
 
