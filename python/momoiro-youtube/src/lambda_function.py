@@ -9,13 +9,18 @@ from googleapiclient.errors import HttpError
 import re
 from dateutil.parser import parse
 import isodate
+from dotenv import load_dotenv
+import csv
+
+# 環境変数の読み込み
+load_dotenv()
 
 # S3クライアントの初期化
 s3 = boto3.client('s3', region_name='ap-northeast-1')
-BUCKET_NAME = os.environ['S3_BUCKET_NAME']
+BUCKET_NAME = os.getenv('S3_BUCKET_NAME_GET_COMMENT')
 
 # YouTube APIクライアントの初期化
-YOUTUBE_API_KEY = os.environ['YOUTUBE_API_KEY']
+YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')
 youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
 
 # ももクロの公式チャンネルID
@@ -159,75 +164,180 @@ def get_channel_videos_for_year(channel_id: str, year: int) -> List[Dict[str, An
         print(f'An HTTP error {e.resp.status} occurred: {e.content}')
         return []
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def get_video_info(video_id):
+    """動画の情報を取得"""
     try:
-        # 東京タイムゾーン
-        tz = pytz.timezone('Asia/Tokyo')
-        # 実行時の現在時刻
-        current_time = datetime.now(tz)
-        
-        # 取得対象の年を設定（2008年から現在まで）
-        start_year = 2008
-        end_year = current_time.year
-        
-        all_videos = []
-        for year in range(start_year, end_year + 1):
-            print(f"\nFetching videos for year {year}")
-            videos = get_channel_videos_for_year(CHANNEL_ID, year)
-            
-            if videos:
-                # 取得時刻をUTCで取得
-                fetched_at = datetime.now(pytz.UTC)
-                
-                # 基本的な統計情報を計算
-                total_views = sum(int(v['statistics'].get('viewCount', 0)) for v in videos)
-                total_likes = sum(int(v['statistics'].get('likeCount', 0)) for v in videos)
-                total_comments = sum(int(v['statistics'].get('commentCount', 0)) for v in videos)
-                
-                # メタデータを追加
-                metadata = {
-                    'year': year,
-                    'total_videos': len(videos),
-                    'total_views': total_views,
-                    'total_likes': total_likes,
-                    'total_comments': total_comments,
-                    'average_views': total_views / len(videos) if videos else 0,
-                    'average_likes': total_likes / len(videos) if videos else 0,
-                    'average_comments': total_comments / len(videos) if videos else 0,
-                    'fetched_at': fetched_at.isoformat()
-                }
-                
-                # S3に保存するファイル名の生成（直下に配置）
-                file_name = f"youtube_videos/videos_{year}_{len(videos)}.json"
-                
-                # JSONデータをS3にアップロード
-                data = {
-                    'metadata': metadata,
-                    'videos': videos
-                }
-                
-                s3.put_object(
-                    Bucket=BUCKET_NAME,
-                    Key=file_name,
-                    Body=json.dumps(data, ensure_ascii=False, indent=2),
-                    ContentType='application/json'
-                )
-                
-                all_videos.extend(videos)
+        response = youtube.videos().list(
+            part='snippet,statistics',
+            id=video_id
+        ).execute()
+
+        if response['items']:
+            video = response['items'][0]
+            return {
+                'videoId': video_id,
+                'title': video['snippet']['title'],
+                'publishedAt': video['snippet']['publishedAt'],
+                'channelId': video['snippet']['channelId'],
+                'channelTitle': video['snippet']['channelTitle'],
+                'viewCount': video['statistics'].get('viewCount', '0'),
+                'likeCount': video['statistics'].get('likeCount', '0'),
+                'commentCount': video['statistics'].get('commentCount', '0')
+            }
+        return None
+    except Exception as e:
+        print(f"動画情報の取得中にエラーが発生しました: {e}")
+        return None
+
+def get_comments(video_id):
+    """動画のコメントを取得"""
+    comments = []
+    next_page_token = None
+
+    # 動画情報を取得
+    video_info = get_video_info(video_id)
+    if not video_info:
+        print(f"動画ID {video_id} の情報を取得できませんでした")
+        return []
+
+    while True:
+        try:
+            # コメントスレッドを取得
+            response = youtube.commentThreads().list(
+                part='snippet',
+                videoId=video_id,
+                maxResults=100,
+                pageToken=next_page_token
+            ).execute()
+
+            for item in response['items']:
+                comment = item['snippet']['topLevelComment']['snippet']
+                comments.append({
+                    'videoId': video_id,
+                    'videoTitle': video_info['title'],
+                    'videoPublishedAt': video_info['publishedAt'],
+                    'videoChannelId': video_info['channelId'],
+                    'videoChannelTitle': video_info['channelTitle'],
+                    'videoViewCount': video_info['viewCount'],
+                    'videoLikeCount': video_info['likeCount'],
+                    'videoCommentCount': video_info['commentCount'],
+                    'author': comment['authorDisplayName'],
+                    'text': comment['textDisplay'],
+                    'likeCount': comment['likeCount'],
+                    'publishedAt': comment['publishedAt']
+                })
+
+            next_page_token = response.get('nextPageToken')
+            if not next_page_token:
+                break
+
+        except Exception as e:
+            print(f"エラーが発生しました: {e}")
+            break
+
+    return comments
+
+def save_json_to_s3(comments, video_id, timestamp):
+    """コメントをJSON形式でS3に保存"""
+    json_filename = f"comments_{video_id}_{timestamp}.json"
+    
+    # JSON形式で保存
+    data = {
+        'video_id': video_id,
+        'timestamp': timestamp,
+        'comments': comments
+    }
+
+    try:
+        s3.put_object(
+            Bucket=BUCKET_NAME,
+            Key=f"youtube_comments/{json_filename}",
+            Body=json.dumps(data, ensure_ascii=False, indent=2)
+        )
+        print(f"コメントを {json_filename} としてS3に保存しました")
+    except Exception as e:
+        print(f"JSONのS3への保存中にエラーが発生しました: {e}")
+
+def save_csv_to_s3(comments, video_id, timestamp):
+    """コメントをCSV形式でS3に保存"""
+    csv_filename = f"comments_{video_id}_{timestamp}.csv"
+    
+    try:
+        # CSVデータの作成
+        csv_buffer = []
+        csv_buffer.append("videoId,videoTitle,videoPublishedAt,videoChannelId,videoChannelTitle,videoViewCount,videoLikeCount,videoCommentCount,author,publishedAt,likeCount,text\n")
+        for comment in comments:
+            # テキスト内のカンマと改行をエスケープ
+            text = comment['text'].replace(',', '，').replace('\n', ' ')
+            csv_buffer.append(
+                f"{comment['videoId']},"
+                f"{comment['videoTitle'].replace(',', '，')},"
+                f"{comment['videoPublishedAt']},"
+                f"{comment['videoChannelId']},"
+                f"{comment['videoChannelTitle'].replace(',', '，')},"
+                f"{comment['videoViewCount']},"
+                f"{comment['videoLikeCount']},"
+                f"{comment['videoCommentCount']},"
+                f"{comment['author'].replace(',', '，')},"
+                f"{comment['publishedAt']},"
+                f"{comment['likeCount']},"
+                f"{text}\n"
+            )
+
+        # S3にアップロード
+        s3.put_object(
+            Bucket=BUCKET_NAME,
+            Key=f"youtube_comments/{csv_filename}",
+            Body=''.join(csv_buffer)
+        )
+        print(f"コメントを {csv_filename} としてS3に保存しました")
+    except Exception as e:
+        print(f"CSVのS3への保存中にエラーが発生しました: {e}")
+
+def save_to_s3(comments, video_id):
+    """コメントをS3に保存（JSONとCSV形式）"""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    # JSON形式で保存
+    save_json_to_s3(comments, video_id, timestamp)
+    
+    # CSV形式で保存
+    save_csv_to_s3(comments, video_id, timestamp)
+
+def lambda_handler(event, context):
+    try:
+        # イベントから動画IDを取得
+        video_id = event.get('video_id')
+        if not video_id:
+            return {
+                'statusCode': 400,
+                'body': json.dumps('video_id is required')
+            }
+
+        print(f"動画ID: {video_id} のコメントを取得中...")
+
+        # コメントを取得
+        comments = get_comments(video_id)
+        print(f"{len(comments)}件のコメントを取得しました")
+
+        # S3に保存
+        save_to_s3(comments, video_id)
 
         return {
             'statusCode': 200,
             'body': json.dumps({
-                'message': 'Successfully fetched and saved videos',
-                'video_count': len(all_videos),
-                'channel': 'ももいろクローバーZ Official Channel',
-                'years_processed': list(range(start_year, end_year + 1))
-            }, ensure_ascii=False)
+                'message': 'Success',
+                'video_id': video_id,
+                'comment_count': len(comments)
+            })
         }
 
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"エラーが発生しました: {e}")
         return {
             'statusCode': 500,
-            'body': json.dumps(f'Error: {str(e)}')
+            'body': json.dumps({
+                'message': 'Error',
+                'error': str(e)
+            })
         } 
