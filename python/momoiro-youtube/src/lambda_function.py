@@ -11,7 +11,7 @@ from dateutil.parser import parse
 import isodate
 
 # S3クライアントの初期化
-s3 = boto3.client('s3')
+s3 = boto3.client('s3', region_name='ap-northeast-1')
 BUCKET_NAME = os.environ['S3_BUCKET_NAME']
 
 # YouTube APIクライアントの初期化
