@@ -191,7 +191,7 @@ def convert_to_csv_row(video_data: Dict[str, Any]) -> Dict[str, Any]:
         'has_member_name': analysis['title_analysis']['メンバー']
     }
 
-def save_to_csv(videos: List[Dict[str, Any]], s3_client: boto3.client, bucket: str) -> None:
+def save_to_csv(videos: List[Dict[str, Any]], s3_client: boto3.client, bucket: str, csv_key: str) -> None:
     """動画データをCSVとしてS3に保存"""
     if not videos:
         print("No videos provided to save_to_csv")
@@ -207,8 +207,6 @@ def save_to_csv(videos: List[Dict[str, Any]], s3_client: boto3.client, bucket: s
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=fieldnames)
     
-    # ファイルが存在するか確認
-    csv_key = 'video_stats.csv'
     try:
         print("Checking for existing CSV file...")
         existing_content = s3_client.get_object(Bucket=bucket, Key=csv_key)['Body'].read().decode('utf-8')
@@ -245,9 +243,15 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # 実行時の現在時刻
         current_time = datetime.now(tz)
         
-        # 取得対象の年を設定（2008年から現在まで）
-        start_year = 2008
+        # 実行日付のフォルダ名を生成（yyyy=YYYY/mm=MM/dd=DD形式）
+        date_folder = f"yyyy={current_time.year}/mm={current_time.month:02d}/dd={current_time.day:02d}"
+        
+        # 取得対象の年を設定（直近3年分のみ）
         end_year = current_time.year
+        start_year = end_year - 2  # 直近3年分のみ取得
+        
+        print(f"Fetching videos from {start_year} to {end_year}")
+        print(f"Data will be saved in folder: {date_folder}")
         
         all_videos = []
         for year in range(start_year, end_year + 1):
@@ -278,8 +282,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'fetched_at': fetched_at.isoformat()
                 }
                 
-                # JSONファイルとして保存
-                json_key = f'video_stats_{year}.json'
+                # JSONファイルとして保存（日付フォルダ配下に配置）
+                json_key = f'{date_folder}/video_stats_{year}.json'
                 s3.put_object(
                     Bucket=BUCKET_NAME,
                     Key=json_key,
@@ -294,10 +298,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         print(f"\nTotal videos collected: {len(all_videos)}")
         
-        # 全年のデータをCSVとして保存
+        # 全年のデータをCSVとして保存（日付フォルダ配下に配置）
         if all_videos:
             print("Attempting to save CSV file...")
-            save_to_csv(all_videos, s3, BUCKET_NAME)
+            csv_key = f'{date_folder}/video_stats.csv'
+            save_to_csv(all_videos, s3, BUCKET_NAME, csv_key)
             print("CSV file saved successfully")
         else:
             print("No videos to save to CSV")
@@ -307,7 +312,8 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'body': json.dumps({
                 'message': 'Successfully processed video data',
                 'years_processed': list(range(start_year, end_year + 1)),
-                'total_videos': len(all_videos)
+                'total_videos': len(all_videos),
+                'date_folder': date_folder
             })
         }
 
