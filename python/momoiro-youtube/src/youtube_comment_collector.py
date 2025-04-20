@@ -19,6 +19,11 @@ youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
 s3 = boto3.client('s3', region_name='ap-northeast-1')
 BUCKET_NAME = os.getenv('S3_BUCKET_NAME_GET_COMMENT')
 
+def get_date_folder():
+    """実行日付のフォルダ名を生成（yyyy=YYYY/mm=MM/dd=DD形式）"""
+    current_time = datetime.now()
+    return f"yyyy={current_time.year}/mm={current_time.month:02d}/dd={current_time.day:02d}"
+
 def get_comments(video_id):
     """動画のコメントを取得"""
     comments = []
@@ -56,6 +61,7 @@ def get_comments(video_id):
 def save_json_to_s3(comments, video_id, timestamp):
     """コメントをJSON形式でS3に保存"""
     json_filename = f"comments_{video_id}_{timestamp}.json"
+    date_folder = get_date_folder()
     
     # JSON形式で保存
     data = {
@@ -67,16 +73,17 @@ def save_json_to_s3(comments, video_id, timestamp):
     try:
         s3.put_object(
             Bucket=BUCKET_NAME,
-            Key=f"youtube_comments/{json_filename}",
+            Key=f"json/{date_folder}/{json_filename}",
             Body=json.dumps(data, ensure_ascii=False, indent=2)
         )
-        print(f"コメントを {json_filename} としてS3に保存しました")
+        print(f"コメントを json/{date_folder}/{json_filename} としてS3に保存しました")
     except Exception as e:
         print(f"JSONのS3への保存中にエラーが発生しました: {e}")
 
 def save_csv_to_s3(comments, video_id, timestamp):
     """コメントをCSV形式でS3に保存"""
     csv_filename = f"comments_{video_id}_{timestamp}.csv"
+    date_folder = get_date_folder()
     
     try:
         # CSVデータの作成
@@ -90,10 +97,10 @@ def save_csv_to_s3(comments, video_id, timestamp):
         # S3にアップロード
         s3.put_object(
             Bucket=BUCKET_NAME,
-            Key=f"youtube_comments/{csv_filename}",
+            Key=f"csv/{date_folder}/{csv_filename}",
             Body=''.join(csv_buffer)
         )
-        print(f"コメントを {csv_filename} としてS3に保存しました")
+        print(f"コメントを csv/{date_folder}/{csv_filename} としてS3に保存しました")
     except Exception as e:
         print(f"CSVのS3への保存中にエラーが発生しました: {e}")
 
