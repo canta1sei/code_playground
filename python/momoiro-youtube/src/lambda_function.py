@@ -9,6 +9,8 @@ from googleapiclient.errors import HttpError
 import re
 from dateutil.parser import parse
 import isodate
+import csv
+import io
 
 # S3クライアントの初期化
 s3 = boto3.client('s3', region_name='ap-northeast-1')
@@ -159,6 +161,74 @@ def get_channel_videos_for_year(channel_id: str, year: int) -> List[Dict[str, An
         print(f'An HTTP error {e.resp.status} occurred: {e.content}')
         return []
 
+def convert_to_csv_row(video_data: Dict[str, Any]) -> Dict[str, Any]:
+    """動画データをCSV行用のフラット形式に変換"""
+    stats = video_data['statistics']
+    analysis = video_data['analysis']
+    
+    return {
+        'video_id': video_data['video_id'],
+        'title': video_data['title'],
+        'published_at': video_data['published_at'],
+        'year': analysis['published_info']['year'],
+        'month': analysis['published_info']['month'],
+        'day': analysis['published_info']['day'],
+        'hour': analysis['published_info']['hour'],
+        'weekday': analysis['published_info']['weekday'],
+        'time_of_day': analysis['published_info']['time_of_day'],
+        'duration_seconds': analysis['duration_seconds'],
+        'view_count': stats.get('viewCount', '0'),
+        'like_count': stats.get('likeCount', '0'),
+        'comment_count': stats.get('commentCount', '0'),
+        'daily_avg_views': round(analysis['daily_average']['views'], 2),
+        'daily_avg_likes': round(analysis['daily_average']['likes'], 2),
+        'daily_avg_comments': round(analysis['daily_average']['comments'], 2),
+        'total_engagement': analysis['total_engagement'],
+        'is_live': analysis['title_analysis']['ライブ'],
+        'is_mv': analysis['title_analysis']['MV'],
+        'is_digest': analysis['title_analysis']['ダイジェスト'],
+        'is_event': analysis['title_analysis']['イベント'],
+        'has_member_name': analysis['title_analysis']['メンバー']
+    }
+
+def save_to_csv(videos: List[Dict[str, Any]], s3_client: boto3.client, bucket: str) -> None:
+    """動画データをCSVとしてS3に保存"""
+    if not videos:
+        return
+        
+    # CSVヘッダーの準備
+    csv_row = convert_to_csv_row(videos[0])
+    fieldnames = list(csv_row.keys())
+    
+    # メモリ上でCSVを作成
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    
+    # ファイルが存在するか確認
+    csv_key = 'video_stats.csv'
+    try:
+        existing_content = s3_client.get_object(Bucket=bucket, Key=csv_key)['Body'].read().decode('utf-8')
+        # 既存のデータを保持
+        output.write(existing_content.rstrip())
+        if not existing_content.endswith('\n'):
+            output.write('\n')
+    except s3_client.exceptions.NoSuchKey:
+        # ファイルが存在しない場合はヘッダーを書き込む
+        writer.writeheader()
+    
+    # 新しいデータを追記
+    for video in videos:
+        writer.writerow(convert_to_csv_row(video))
+    
+    # S3にアップロード
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=csv_key,
+        Body=output.getvalue().encode('utf-8'),
+        ContentType='text/csv'
+    )
+    output.close()
+
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     try:
         # 東京タイムゾーン
@@ -174,6 +244,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         for year in range(start_year, end_year + 1):
             print(f"\nFetching videos for year {year}")
             videos = get_channel_videos_for_year(CHANNEL_ID, year)
+            all_videos.extend(videos)
             
             if videos:
                 # 取得時刻をUTCで取得
@@ -197,37 +268,38 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'fetched_at': fetched_at.isoformat()
                 }
                 
-                # S3に保存するファイル名の生成（直下に配置）
-                file_name = f"youtube_videos/videos_{year}_{len(videos)}.json"
-                
-                # JSONデータをS3にアップロード
-                data = {
-                    'metadata': metadata,
-                    'videos': videos
-                }
-                
+                # JSONファイルとして保存
+                json_key = f'video_stats_{year}.json'
                 s3.put_object(
                     Bucket=BUCKET_NAME,
-                    Key=file_name,
-                    Body=json.dumps(data, ensure_ascii=False, indent=2),
+                    Key=json_key,
+                    Body=json.dumps({
+                        'metadata': metadata,
+                        'videos': videos
+                    }, ensure_ascii=False, indent=2),
                     ContentType='application/json'
                 )
                 
-                all_videos.extend(videos)
-
+                print(f"Saved JSON data for {year} to S3: {json_key}")
+        
+        # 全年のデータをCSVとして保存
+        if all_videos:
+            save_to_csv(all_videos, s3, BUCKET_NAME)
+            print("Saved all video data to CSV file")
+        
         return {
             'statusCode': 200,
             'body': json.dumps({
-                'message': 'Successfully fetched and saved videos',
-                'video_count': len(all_videos),
-                'channel': 'ももいろクローバーZ Official Channel',
+                'message': 'Successfully processed video data',
                 'years_processed': list(range(start_year, end_year + 1))
-            }, ensure_ascii=False)
+            })
         }
 
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f'Error: {str(e)}')
         return {
             'statusCode': 500,
-            'body': json.dumps(f'Error: {str(e)}')
+            'body': json.dumps({
+                'error': str(e)
+            })
         } 
