@@ -30,10 +30,12 @@ def get_channel_videos_for_year(channel_id: str, year: int) -> list:
     # 年を開始日と終了日に変換
     start_date = datetime(year, 1, 1).isoformat() + 'Z'
     end_date = datetime(year, 12, 31, 23, 59, 59).isoformat() + 'Z'
+    print(f"検索期間: {start_date} から {end_date}")
 
     while True:
         try:
             # チャンネルの動画を検索
+            print(f"動画を検索中... (ページトークン: {next_page_token})")
             response = youtube.search().list(
                 part='snippet',
                 channelId=channel_id,
@@ -45,26 +47,33 @@ def get_channel_videos_for_year(channel_id: str, year: int) -> list:
                 pageToken=next_page_token
             ).execute()
 
+            print(f"検索結果: {len(response.get('items', []))}件の動画が見つかりました")
+
             # 動画IDを取得
             video_ids = [item['id']['videoId'] for item in response['items']]
+            print(f"取得する動画ID: {video_ids}")
 
             # 動画の詳細情報を取得
             if video_ids:
+                print("動画の詳細情報を取得中...")
                 video_response = youtube.videos().list(
                     part='snippet,statistics',
                     id=','.join(video_ids)
                 ).execute()
 
+                print(f"詳細情報を取得した動画数: {len(video_response['items'])}")
                 videos.extend(video_response['items'])
 
             next_page_token = response.get('nextPageToken')
             if not next_page_token:
+                print("次のページはありません")
                 break
 
         except Exception as e:
             print(f"エラーが発生しました: {e}")
             break
 
+    print(f"合計で {len(videos)} 件の動画を取得しました")
     return videos
 
 def save_videos_to_csv(videos: list, year: int, fetched_at: str) -> str:
