@@ -248,7 +248,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # 取得対象の年を設定（直近3年分のみ）
         end_year = current_time.year
-        start_year = end_year - 2  # 直近3年分のみ取得
+        start_year = 2008  # 2008年から取得
         
         print(f"Fetching videos from {start_year} to {end_year}")
         print(f"Data will be saved in folder: {date_folder}")
