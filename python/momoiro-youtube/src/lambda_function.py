@@ -251,14 +251,16 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # 実行日付のフォルダ名を生成（yyyy=YYYY/mm=MM/dd=DD形式）
         date_folder = f"yyyy={current_time.year}/mm={current_time.month:02d}/dd={current_time.day:02d}"
         
-        # 取得対象の年を設定（直近3年分のみ）
+        # 取得対象の年を設定
         end_year = current_time.year
-        start_year = 2008  # 2008年から取得
+        start_year = event.get('start_year', current_time.year)  # イベントから開始年を取得、デフォルトは現在の年
         
         print(f"Fetching videos from {start_year} to {end_year}")
         print(f"Data will be saved in folder: {date_folder}")
         
         all_videos = []
+        
+        # 各年の動画を取得
         for year in range(start_year, end_year + 1):
             print(f"\nFetching videos for year {year}")
             videos = get_channel_videos_for_year(CHANNEL_ID, year)
@@ -321,7 +323,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'date_folder': date_folder
             })
         }
-
+        
     except Exception as e:
         print(f'Error: {str(e)}')
         return {
