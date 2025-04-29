@@ -123,16 +123,26 @@ def get_channel_videos_for_year(channel_id: str, year: int) -> List[Dict[str, An
 
             for item in search_response.get('items', []):
                 if item['id']['kind'] == 'youtube#video':
+                    video_id = item['id']['videoId']
+                    print(f"Processing video ID: {video_id}")
+                    
                     # 動画の詳細情報を取得
                     video_response = youtube.videos().list(
                         part='statistics,contentDetails',
-                        id=item['id']['videoId']
+                        id=video_id
                     ).execute()
 
                     if video_response['items']:
                         video_stats = video_response['items'][0]
+                        print(f"Video stats: {json.dumps(video_stats, ensure_ascii=False)}")
+                        
+                        # contentDetailsが存在するか確認
+                        if 'contentDetails' not in video_stats:
+                            print(f"Warning: contentDetails not found for video {video_id}")
+                            continue
+                            
                         video_data = {
-                            'video_id': item['id']['videoId'],
+                            'video_id': video_id,
                             'title': item['snippet']['title'],
                             'description': item['snippet']['description'],
                             'published_at': item['snippet']['publishedAt'],
