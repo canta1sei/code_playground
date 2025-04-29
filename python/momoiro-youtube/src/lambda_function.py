@@ -126,38 +126,74 @@ def get_channel_videos_for_year(channel_id: str, year: int) -> List[Dict[str, An
                     video_id = item['id']['videoId']
                     print(f"Processing video ID: {video_id}")
                     
-                    # 動画の詳細情報を取得
-                    video_response = youtube.videos().list(
-                        part='statistics,contentDetails',
-                        id=video_id
-                    ).execute()
+                    try:
+                        # 動画の詳細情報を取得
+                        video_response = youtube.videos().list(
+                            part='statistics,contentDetails',
+                            id=video_id
+                        ).execute()
 
-                    if video_response['items']:
+                        if not video_response['items']:
+                            print(f"Warning: No video details found for {video_id}")
+                            continue
+
                         video_stats = video_response['items'][0]
                         print(f"Video stats: {json.dumps(video_stats, ensure_ascii=False)}")
                         
-                        # contentDetailsが存在するか確認
-                        if 'contentDetails' not in video_stats:
-                            print(f"Warning: contentDetails not found for video {video_id}")
-                            continue
-                            
+                        # 各フィールドの存在チェックとデフォルト値設定
+                        content_details = video_stats.get('contentDetails', {})
+                        statistics = video_stats.get('statistics', {})
+                        
+                        # durationのデフォルト値設定
+                        duration = content_details.get('duration', 'PT0S')
+                        
+                        # 統計情報のデフォルト値設定
+                        view_count = statistics.get('viewCount', '0')
+                        like_count = statistics.get('likeCount', '0')
+                        comment_count = statistics.get('commentCount', '0')
+                        
                         video_data = {
                             'video_id': video_id,
-                            'title': item['snippet']['title'],
-                            'description': item['snippet']['description'],
-                            'published_at': item['snippet']['publishedAt'],
-                            'thumbnail_url': item['snippet']['thumbnails']['high']['url'],
+                            'title': item['snippet'].get('title', ''),
+                            'description': item['snippet'].get('description', ''),
+                            'published_at': item['snippet'].get('publishedAt', ''),
+                            'thumbnail_url': item['snippet'].get('thumbnails', {}).get('high', {}).get('url', ''),
                             'channel_id': channel_id,
-                            'channel_title': item['snippet']['channelTitle'],
-                            'statistics': video_stats['statistics'],
-                            'duration': video_stats['contentDetails']['duration'],
+                            'channel_title': item['snippet'].get('channelTitle', ''),
+                            'statistics': {
+                                'viewCount': view_count,
+                                'likeCount': like_count,
+                                'commentCount': comment_count
+                            },
+                            'duration': duration,
+                            'fetched_at': datetime.now(pytz.UTC).isoformat(),
+                            'status': 'SUCCESS'  # 取得成功
+                        }
+                        
+                        # 分析データを追加
+                        try:
+                            video_data = analyze_video_data(video_data)
+                            videos.append(video_data)
+                            total_videos += 1
+                            print(f"Processed video {total_videos}: {video_data['title']}")
+                        except Exception as e:
+                            print(f"Warning: Analysis failed for video {video_id}: {str(e)}")
+                            video_data['status'] = 'ANALYSIS_ERROR'  # 分析失敗
+                            videos.append(video_data)
+                            total_videos += 1
+                            
+                    except Exception as e:
+                        print(f"Warning: Failed to process video {video_id}: {str(e)}")
+                        # エラー情報を含む最小限のデータを保存
+                        error_data = {
+                            'video_id': video_id,
+                            'title': item['snippet'].get('title', ''),
+                            'status': 'FETCH_ERROR',  # 取得失敗
+                            'error_message': str(e),
                             'fetched_at': datetime.now(pytz.UTC).isoformat()
                         }
-                        # 分析データを追加
-                        video_data = analyze_video_data(video_data)
-                        videos.append(video_data)
+                        videos.append(error_data)
                         total_videos += 1
-                        print(f"Processed video {total_videos}: {video_data['title']}")
 
             # 次のページがあれば続行
             page_token = search_response.get('nextPageToken')
@@ -173,38 +209,54 @@ def get_channel_videos_for_year(channel_id: str, year: int) -> List[Dict[str, An
 
 def convert_to_csv_row(video_data: Dict[str, Any]) -> Dict[str, Any]:
     """動画データをCSV行用のフラット形式に変換"""
-    stats = video_data['statistics']
-    analysis = video_data['analysis']
-    
     # 現在の日本時間を取得
     jst = pytz.timezone('Asia/Tokyo')
     current_time_jst = datetime.now(jst).strftime('%Y-%m-%d %H:%M:%S')
     
-    return {
-        'video_id': video_data['video_id'],
-        'title': video_data['title'],
-        'published_at': video_data['published_at'],
-        'year': analysis['published_info']['year'],
-        'month': analysis['published_info']['month'],
-        'day': analysis['published_info']['day'],
-        'hour': analysis['published_info']['hour'],
-        'weekday': analysis['published_info']['weekday'],
-        'time_of_day': analysis['published_info']['time_of_day'],
-        'duration_seconds': analysis['duration_seconds'],
-        'view_count': stats.get('viewCount', '0'),
-        'like_count': stats.get('likeCount', '0'),
-        'comment_count': stats.get('commentCount', '0'),
-        'daily_avg_views': round(analysis['daily_average']['views'], 2),
-        'daily_avg_likes': round(analysis['daily_average']['likes'], 2),
-        'daily_avg_comments': round(analysis['daily_average']['comments'], 2),
-        'total_engagement': analysis['total_engagement'],
-        'is_live': analysis['title_analysis']['ライブ'],
-        'is_mv': analysis['title_analysis']['MV'],
-        'is_digest': analysis['title_analysis']['ダイジェスト'],
-        'is_event': analysis['title_analysis']['イベント'],
-        'has_member_name': analysis['title_analysis']['メンバー'],
-        'recorded_at': current_time_jst  # 新しいカラムを追加
+    # 基本情報
+    row = {
+        'video_id': video_data.get('video_id', ''),
+        'title': video_data.get('title', ''),
+        'status': video_data.get('status', 'UNKNOWN'),
+        'recorded_at': current_time_jst
     }
+    
+    # エラーが発生した場合は、エラーメッセージを追加
+    if video_data.get('status') == 'FETCH_ERROR':
+        row['error_message'] = video_data.get('error_message', '')
+        return row
+    
+    # 正常に取得できた場合の追加情報
+    stats = video_data.get('statistics', {})
+    analysis = video_data.get('analysis', {})
+    
+    # 分析情報が存在する場合のみ追加
+    if analysis:
+        published_info = analysis.get('published_info', {})
+        row.update({
+            'published_at': video_data.get('published_at', ''),
+            'year': published_info.get('year', ''),
+            'month': published_info.get('month', ''),
+            'day': published_info.get('day', ''),
+            'hour': published_info.get('hour', ''),
+            'weekday': published_info.get('weekday', ''),
+            'time_of_day': published_info.get('time_of_day', ''),
+            'duration_seconds': analysis.get('duration_seconds', 0),
+            'view_count': stats.get('viewCount', '0'),
+            'like_count': stats.get('likeCount', '0'),
+            'comment_count': stats.get('commentCount', '0'),
+            'daily_avg_views': round(analysis.get('daily_average', {}).get('views', 0), 2),
+            'daily_avg_likes': round(analysis.get('daily_average', {}).get('likes', 0), 2),
+            'daily_avg_comments': round(analysis.get('daily_average', {}).get('comments', 0), 2),
+            'total_engagement': analysis.get('total_engagement', 0),
+            'is_live': analysis.get('title_analysis', {}).get('ライブ', False),
+            'is_mv': analysis.get('title_analysis', {}).get('MV', False),
+            'is_digest': analysis.get('title_analysis', {}).get('ダイジェスト', False),
+            'is_event': analysis.get('title_analysis', {}).get('イベント', False),
+            'has_member_name': analysis.get('title_analysis', {}).get('メンバー', False)
+        })
+    
+    return row
 
 def save_to_csv(videos: List[Dict[str, Any]], s3_client: boto3.client, bucket: str, csv_key: str) -> None:
     """動画データをCSVとしてS3に保存"""
