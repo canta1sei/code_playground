@@ -166,6 +166,10 @@ def convert_to_csv_row(video_data: Dict[str, Any]) -> Dict[str, Any]:
     stats = video_data['statistics']
     analysis = video_data['analysis']
     
+    # 現在の日本時間を取得
+    jst = pytz.timezone('Asia/Tokyo')
+    current_time_jst = datetime.now(jst).strftime('%Y-%m-%d %H:%M:%S')
+    
     return {
         'video_id': video_data['video_id'],
         'title': video_data['title'],
@@ -188,7 +192,8 @@ def convert_to_csv_row(video_data: Dict[str, Any]) -> Dict[str, Any]:
         'is_mv': analysis['title_analysis']['MV'],
         'is_digest': analysis['title_analysis']['ダイジェスト'],
         'is_event': analysis['title_analysis']['イベント'],
-        'has_member_name': analysis['title_analysis']['メンバー']
+        'has_member_name': analysis['title_analysis']['メンバー'],
+        'recorded_at': current_time_jst  # 新しいカラムを追加
     }
 
 def save_to_csv(videos: List[Dict[str, Any]], s3_client: boto3.client, bucket: str, csv_key: str) -> None:
