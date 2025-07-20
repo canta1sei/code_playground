@@ -1,0 +1,5 @@
+[33m8a4108c[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m Remove S3 client initialization and bucket names from lambda_function.py
+[33m5be7e4c[m Update youtube_comment_collector.py to use IAM role for authentication
+[33m96025f8[m Simplify script execution path
+[33m30828bd[m Update YouTube comment collector to use correct video ID
+[33maa76fcd[m Remove movie bucket save, only save to comment bucket
